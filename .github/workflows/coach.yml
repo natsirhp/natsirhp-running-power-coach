@@ -1,0 +1,31 @@
+name: Post-run coach check-in
+on:
+  schedule: [{cron: "17 */2 * * *"}]   # every 2h; only speaks when a NEW run appears
+  workflow_dispatch:
+    inputs: {force: {description: "Re-run on latest activity", type: boolean, default: false}}
+permissions: {contents: write, issues: write}
+jobs:
+  coach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: Run coach
+        env:
+          INTERVALS_ATHLETE_ID: ${{ secrets.INTERVALS_ATHLETE_ID }}
+          INTERVALS_API_KEY: ${{ secrets.INTERVALS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RACE_DATE: ${{ vars.RACE_DATE }}
+          NOTE_FILE: note.md
+        run: python -m coach.main ${{ inputs.force && '--force' || '' }}
+      - name: Post note as issue + save state
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          if [ -f note.md ]; then
+            gh issue create --title "Coach: $(head -1 note.md | sed 's/### //')" --body-file note.md
+            git config user.name coach-bot; git config user.email bot@users.noreply.github.com
+            git add state && git commit -m "state: last activity" && git push
+          fi
