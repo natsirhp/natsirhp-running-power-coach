@@ -26,7 +26,7 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           RACE_DATE: ${{ vars.RACE_DATE }}
           NOTE_FILE: note.md
-        run: python -m coach.main ${{ inputs.force && '--force' || '' }}
+        run: python -m coach.main ${{ github.event_name == 'workflow_dispatch' && '--force' || '' }}
       - name: Post note as issue + save state
         env: {GH_TOKEN: "${{ github.token }}"}
         run: |
