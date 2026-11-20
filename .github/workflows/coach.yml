@@ -7,17 +7,23 @@ permissions: {contents: write, issues: write}
 jobs:
   coach:
     runs-on: ubuntu-latest
+    env:
+      HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
       - run: pip install -r requirements.txt
+      - name: Install Claude Code CLI (subscription mode)
+        if: ${{ env.HAS_OAUTH == 'true' }}
+        run: npm install -g @anthropic-ai/claude-code
       - run: python -m pytest -q
       - name: Run coach
         env:
           INTERVALS_ATHLETE_ID: ${{ secrets.INTERVALS_ATHLETE_ID }}
           INTERVALS_API_KEY: ${{ secrets.INTERVALS_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           RACE_DATE: ${{ vars.RACE_DATE }}
           NOTE_FILE: note.md
         run: python -m coach.main ${{ inputs.force && '--force' || '' }}

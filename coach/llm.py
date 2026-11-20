@@ -1,5 +1,5 @@
 """Turns the computed facts into a short coach's note."""
-import json, os
+import json, os, sys
 from pathlib import Path
 
 REF = Path(__file__).parent / "references"
@@ -24,12 +24,36 @@ def fallback(facts: dict) -> str:
             f"{f.get('ramp')} ({f.get('ramp_state')}). Flags: {'; '.join(r['flags']) or 'none'}.")
 
 
-def coach_note(facts: dict) -> str:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return fallback(facts)
+def _refs() -> str:
+    return "\n\n".join(p.read_text() for p in sorted(REF.glob("*.md")))
+
+
+def _via_api(facts: dict) -> str:
     import anthropic
-    refs = "\n\n".join(p.read_text() for p in sorted(REF.glob("*.md")))
     msg = anthropic.Anthropic().messages.create(
-        model=MODEL, max_tokens=600, system=SYSTEM.format(refs=refs),
+        model=MODEL, max_tokens=600, system=SYSTEM.format(refs=_refs()),
         messages=[{"role": "user", "content": json.dumps(facts, indent=1, default=str)}])
     return msg.content[0].text.strip()
+
+
+def _via_claude_code(facts: dict) -> str:
+    """Use a Claude subscription via the Claude Code CLI (CLAUDE_CODE_OAUTH_TOKEN)."""
+    import subprocess
+    prompt = SYSTEM.format(refs=_refs()) + "\n\nFACTS:\n" + json.dumps(facts, indent=1, default=str)
+    r = subprocess.run(["claude", "-p", "--output-format", "text"], input=prompt,
+                       capture_output=True, text=True, timeout=240)
+    if r.returncode != 0 or not r.stdout.strip():
+        raise RuntimeError(r.stderr[-300:])
+    return r.stdout.strip()
+
+
+def coach_note(facts: dict) -> str:
+    """API key -> subscription token -> plain numeric summary. Never raises."""
+    try:
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            return _via_api(facts)
+        if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+            return _via_claude_code(facts)
+    except Exception as e:  # keep the check-in alive even if the model call fails
+        print(f"LLM failed ({type(e).__name__}): {e}", file=sys.stderr)
+    return fallback(facts)
