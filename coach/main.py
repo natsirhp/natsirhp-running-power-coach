@@ -51,4 +51,16 @@ def main(force=False):
 
 
 if __name__ == "__main__":
-    sys.exit(main(force="--force" in sys.argv))
+    try:
+        sys.exit(main(force="--force" in sys.argv))
+    except Exception as e:  # secrets are never in these messages
+        import traceback
+        resp = getattr(e, "response", None)
+        msg = f"{type(e).__name__}: {e}"
+        if resp is not None:
+            msg += f" (HTTP {resp.status_code} from {resp.url.split('?')[0]})"
+        msg = msg.replace(os.environ.get("INTERVALS_API_KEY", "\0"), "***")
+        Path("error.txt").write_text(msg + "\n\n" + traceback.format_exc()[-1200:].replace(
+            os.environ.get("INTERVALS_API_KEY", "\0"), "***"))
+        print(msg, file=sys.stderr)
+        sys.exit(1)
