@@ -20,3 +20,23 @@ def test_easy_too_hard_flag():
     assert f["run"]["pct_cp"] == 90.0 and f["run"]["flags"]
     assert f["form"]["tsb"] == -18 and f["form"]["rhr_elevated"]
     assert f["trailing_28d"]["grey_zone_drift"]
+
+
+def _iv(t, w, hr, typ="WORK"):
+    return {"type": typ, "moving_time": t, "average_watts": w, "average_heartrate": hr, "distance": t * 3.4}
+
+def test_subthreshold_reps_clean():
+    ivs = [_iv(180, 255, 150), _iv(60, 150, 140, "RECOVERY"), _iv(180, 256, 153),
+           _iv(60, 150, 142, "RECOVERY"), _iv(180, 254, 155)]
+    r = an.analyse_intervals(ivs, 300)
+    assert r["n_reps"] == 3 and r["kind"].startswith("sub-threshold") and not r["flags"]
+
+def test_hot_fading_reps_flagged():
+    ivs = [_iv(180, 305, 150), _iv(180, 285, 160), _iv(180, 270, 168)]
+    r = an.analyse_intervals(ivs, 300)
+    txt = " ".join(r["flags"])
+    assert "fading" in txt and "uneven" in txt and r["hr_drift"] == 18
+
+def test_no_reps_returns_none():
+    assert an.analyse_intervals([_iv(3000, 240, 140, "RECOVERY")], 300) is None
+    assert an.analyse_intervals([], 300) is None

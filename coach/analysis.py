@@ -115,3 +115,59 @@ def form(wellness: list):
             "rhr": w.get("restingHR"), "rhr_baseline": round(base, 1) if base else None,
             "rhr_elevated": bool(w.get("restingHR") and base and w["restingHR"] - base >= 4),
             "sleep_score": w.get("sleepScore")}
+
+
+def _pace(dist_m, secs):
+    if not dist_m or not secs:
+        return None
+    spk = secs / (dist_m / 1000)
+    return f"{int(spk // 60)}:{int(spk % 60):02d}/km"
+
+
+def analyse_intervals(ivs: list, cp: float, min_secs: int = 60):
+    """Rep-by-rep execution check for a structured/threshold session. None if < 2 work reps."""
+    if not ivs or not cp:
+        return None
+    reps, recs = [], []
+    for iv in ivs:
+        t = iv.get("moving_time") or iv.get("elapsed_time") or 0
+        w = iv.get("average_watts")
+        if not w or t < min_secs:
+            continue
+        row = {"secs": t, "watts": round(w), "pct_cp": round(100 * w / cp, 1),
+               "hr": iv.get("average_heartrate"), "pace": _pace(iv.get("distance"), t)}
+        (reps if (iv.get("type") or "").upper() == "WORK" else recs).append(row)
+    if len(reps) < 2:
+        return None
+    for i, r in enumerate(reps, 1):
+        r["rep"] = i
+    pcts = [r["pct_cp"] for r in reps]
+    mean = sum(pcts) / len(pcts)
+    spread = max(pcts) - min(pcts)
+    fade = pcts[-1] - pcts[0]
+    hrs = [r["hr"] for r in reps if r["hr"]]
+    hr_drift = round(hrs[-1] - hrs[0]) if len(hrs) >= 2 else None
+    kind = ("sub-threshold (LT1-LT2)" if mean < 95 else "threshold (LT2)" if mean < 105
+            else "VO2max / above LT2")
+    flags = []
+    if any(p >= 100 for p in pcts) and mean < 95:
+        flags.append("some reps hit >=100% CP in a sub-threshold session (too hot)")
+    if mean < 80:
+        flags.append(f"work reps averaged {mean:.0f}% CP: below LT1, little threshold stimulus")
+    if spread >= 6:
+        flags.append(f"uneven pacing: {spread:.1f}% CP spread across reps")
+    if fade <= -3:
+        flags.append(f"fading: last rep {abs(fade):.1f}% CP lower than first")
+    if fade >= 4:
+        flags.append(f"positive split: last rep {fade:.1f}% CP higher than first (went out too easy)")
+    if hr_drift is not None and hr_drift >= 8 and abs(fade) < 3:
+        flags.append(f"HR drift +{hr_drift} bpm at flat power (fatigue/heat)")
+    if recs:
+        rec_pct = sum(r["pct_cp"] for r in recs) / len(recs)
+        if rec_pct > 70:
+            flags.append(f"recoveries averaged {rec_pct:.0f}% CP, too hard to be true recovery")
+    return {"n_reps": len(reps), "mean_pct_cp": round(mean, 1), "kind": kind,
+            "spread_pct": round(spread, 1), "fade_pct": round(fade, 1), "hr_drift": hr_drift,
+            "work_secs": sum(r["secs"] for r in reps), "reps": reps,
+            "recovery_pct_cp": round(sum(r["pct_cp"] for r in recs) / len(recs), 1) if recs else None,
+            "flags": flags}

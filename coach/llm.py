@@ -14,14 +14,26 @@ Write a coach's text message, 100-180 words, technical, numbers first, no bullet
 lists, no fluff. Four parts: (1) what the run was for and whether execution
 matched (%CP, zone, pace/HR); (2) form snapshot (CTL/ATL/TSB, ramp, resting HR,
 sleep); (3) one concrete recommendation for the next session or two; (4) a
-red-flag warning ONLY if the data warrants it. Use only the numbers provided."""
+red-flag warning ONLY if the data warrants it. Use only the numbers provided.
+
+If facts.intervals is present, the run was a structured session: judge it rep by rep
+(mean %CP vs the intended zone, spread, fade, HR drift, recoveries) and lead with that
+rather than the whole-run average, which blends warm-up, reps and cooldown. You may
+go to ~220 words in that case. Name any flags explicitly."""
 
 
 def fallback(facts: dict) -> str:
     r, f = facts["run"], facts["form"]
-    return (f"{r['name']} ({r['date']}): {r['avg_power']} W = {r['pct_cp']}% CP -> {r['zone']} "
+    iv = facts.get("intervals")
+    extra = ""
+    if iv:
+        reps = ", ".join(f"{x['watts']}W/{x['pct_cp']}%" for x in iv["reps"])
+        extra = (f" Reps ({iv['n_reps']}, {iv['kind']}): {reps}; mean {iv['mean_pct_cp']}% CP, "
+                 f"fade {iv['fade_pct']}%, flags: {'; '.join(iv['flags']) or 'none'}.")
+    base = (f"{r['name']} ({r['date']}): {r['avg_power']} W = {r['pct_cp']}% CP -> {r['zone']} "
             f"({r['landmark']}). Form TSB {f.get('tsb')} ({f.get('tsb_state')}), ramp "
             f"{f.get('ramp')} ({f.get('ramp_state')}). Flags: {'; '.join(r['flags']) or 'none'}.")
+    return base + extra
 
 
 def _refs() -> str:

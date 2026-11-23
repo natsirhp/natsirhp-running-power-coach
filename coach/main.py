@@ -35,6 +35,11 @@ def main(force=False):
     old, new = str(today - timedelta(days=28)), str(today)
     acts, wellness = api.activities(old, new), api.wellness(old, new)
     facts = build_facts(acts, wellness, race_date, today)
+    if facts:
+        try:
+            facts["intervals"] = an.analyse_intervals(api.activity_intervals(facts["run"]["id"]), facts["cp_watts"])
+        except Exception as e:  # interval data is a bonus; never block the note
+            print(f"intervals skipped: {type(e).__name__}", file=sys.stderr)
     if not facts:
         print("No run with power data; nothing to do."); return 0
     seen = STATE.read_text().strip() if STATE.exists() else ""
